@@ -5,6 +5,7 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 
 import msgpack
 import ovirtsdk4 as sdk
@@ -57,7 +58,6 @@ def power_off_vms(connection):
     while len(stopped_vms) < (len(vms)-len(PROTECTED_VMS)):
         loop_count += 1
         for vm in vms:
-            print(f"Checking if {vm.name} in {PROTECTED_VMS}")
             if vm.name not in PROTECTED_VMS:
                 try:
                     print(f"{vm.name}: {vm.status}")
@@ -72,6 +72,7 @@ def power_off_vms(connection):
                     sys.exit(1)
         print(f"VM's shutoff {len(stopped_vms)}/{len(vms)-len(PROTECTED_VMS)}")
         print(f"Loop number: {loop_count}")
+        time.sleep(1)
         vms = vms_service.list()
 
 def set_maintenance_mode():
