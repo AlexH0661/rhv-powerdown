@@ -2,5 +2,5 @@
 
 echo "Starting power down procedure"
 
-source venv venv/bin/activate
+source venv/bin/activate
 emergencypoweroff

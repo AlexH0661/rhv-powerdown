@@ -2,14 +2,14 @@
 
 """ Gracefully shutdown all services on a Red Hat Virtualization Host """
 import os
-from re import sub
 import subprocess
+import sys
 
 import msgpack
 import ovirtsdk4 as sdk
 from ovirtsdk4 import types
 
-PROTECTED_VMS = ['HostedEngine', 'hussdc01.hussdogg.com', 'identity.idm.hussdogg.com']
+PROTECTED_VMS = ['HostedEngine']
 FLAGS = [
     'noout',
     'norecover',
@@ -43,6 +43,7 @@ def power_off_vms(connection):
     :param object connection: oVirt connection object
     """
     print('Retrieving VM details')
+    print(f"Excluding the following VMs: {PROTECTED_VMS}")
     system_service = connection.system_service()
     vms_service = system_service.vms_service()
     loop_count = 0
@@ -51,14 +52,19 @@ def power_off_vms(connection):
     while count > (len(vms)-len(PROTECTED_VMS)):
         loop_count += 1
         for vm in vms:
+            print(f"Checking if {vm.name} in {PROTECTED_VMS}")
             if vm.name not in PROTECTED_VMS:
-                print(f"{vm.name}: {vm.status}")
-                vm_service = vms_service.vm_service(vm.id)
-                if vm.status == types.VmStatus.DOWN:
-                    count += 1
-                if vm.status == types.VmStatus.UP:
-                    vm_service.stop()
-                continue
+                try:
+                    print(f"{vm.name}: {vm.status}")
+                    vm_service = vms_service.vm_service(vm.id)
+                    if vm.status == types.VmStatus.DOWN:
+                        count += 1
+                    if vm.status == types.VmStatus.UP:
+                        vm_service.stop()
+                    continue
+                except BaseException as base_err:
+                    print(base_err)
+                    sys.exit(1)
         print(f"VM's shutoff {count}/{len(vms)-len(PROTECTED_VMS)}")
         print(f"Loop number: {loop_count}")
         vms = vms_service.list()
