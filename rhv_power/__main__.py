@@ -47,9 +47,9 @@ def power_off_vms(connection):
     system_service = connection.system_service()
     vms_service = system_service.vms_service()
     loop_count = 0
-    count = 0
+    stopped_vms = set()
     vms = vms_service.list()
-    while count > (len(vms)-len(PROTECTED_VMS)):
+    while len(stopped_vms) < (len(vms)-len(PROTECTED_VMS)):
         loop_count += 1
         for vm in vms:
             print(f"Checking if {vm.name} in {PROTECTED_VMS}")
@@ -58,17 +58,16 @@ def power_off_vms(connection):
                     print(f"{vm.name}: {vm.status}")
                     vm_service = vms_service.vm_service(vm.id)
                     if vm.status == types.VmStatus.DOWN:
-                        count += 1
+                        stopped_vms.add(vm.name)
                     if vm.status == types.VmStatus.UP:
-                        vm_service.stop()
+                        vm_service.shutdown()
                     continue
                 except BaseException as base_err:
                     print(base_err)
                     sys.exit(1)
-        print(f"VM's shutoff {count}/{len(vms)-len(PROTECTED_VMS)}")
+        print(f"VM's shutoff {len(stopped_vms)}/{len(vms)-len(PROTECTED_VMS)}")
         print(f"Loop number: {loop_count}")
         vms = vms_service.list()
-        count = 0
 
 def set_maintenance_mode():
     """
