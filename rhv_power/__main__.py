@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 """ Gracefully shutdown all services on a Red Hat Virtualization Host """
+import argparse
 import os
 import subprocess
 import sys
@@ -8,6 +9,10 @@ import sys
 import msgpack
 import ovirtsdk4 as sdk
 from ovirtsdk4 import types
+
+PARSER = argparse.ArgumentParser()
+PARSER.add_argument('--ceph', action='store_true', help='This node hosts RHCS')
+ARGS = PARSER.parse_args()
 
 PROTECTED_VMS = ['HostedEngine']
 FLAGS = [
@@ -95,8 +100,9 @@ def main():
     """
     main application loop
     """
-    print('Setting ceph flags')
-    set_ceph_flags()
+    if ARGS.ceph:
+        print('Setting ceph flags')
+        set_ceph_flags()
     print('Connecting to RHVM')
     connection = sdk.Connection(
         url = BASE_URL,
