@@ -1,0 +1,6 @@
+rhvm_username: user
+rhvm_password: password
+rhvm_url: https://rhvm.example.com/ovirt-engine/api
+#Optional
+# protected_vms: #These VMs will not be powered down when all other VMs are
+#   - HostedEngine #default protected VM

@@ -8,7 +8,8 @@ setup(
     ],
     install_requires=[
         'msgpack',
-        'pylint'
+        'pylint',
+        'pyyaml'
     ],
     entry_points = {
         'console_scripts': [
