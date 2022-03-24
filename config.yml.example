@@ -7,3 +7,4 @@ ups:
 # protected_vms: #These VMs will not be powered down when all other VMs are
 #   - HostedEngine #default protected VM
 # monitor_frequency: 60 # Default polling value to check if UPS is on battery
+# discord_webhook: https://discord.com/webhook # Webhook to send notifications to

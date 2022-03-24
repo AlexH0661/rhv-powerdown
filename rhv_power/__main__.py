@@ -3,10 +3,12 @@
 """ Gracefully shutdown all services on a Red Hat Virtualization Host """
 import argparse
 import logging
-import os
+import json
+import socket
 import subprocess
 import sys
 import time
+import urllib3
 
 import msgpack
 from pysnmp.hlapi import *
@@ -20,6 +22,11 @@ PARSER.add_argument(
     '--verbose', help='Increase application verbosity', action='store_true'
 )
 ARGS = PARSER.parse_args()
+
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.connect(("8.8.8.8", 80))
+HOST_IP = s.getsockname()[0]
+HOSTNAME = socket.gethostname() 
 
 LOG_LEVEL = logging.INFO
 if ARGS.verbose:
@@ -141,6 +148,28 @@ def _is_ups_on_mains(ups_ip_addr):
         if result == 1:
             return False
 
+def _post_msg_discord(msg, discordHook, colour='16711680'):
+    """
+    post a message to discord
+    """
+    data = {}
+    data["tts"] = "true"
+    data["username"] = HOSTNAME
+    data["avatar_url"] = "https://cdn3.vectorstock.com/i/1000x1000/78/02/cartoon-turtle-vector-4367802.jpg"
+    data["embeds"] = []
+    embed = {}
+    embed["color"] = colour
+    embed["title"] = "UPS Notification"
+    embed["description"] = msg
+    data["embeds"].append(embed)
+    http = urllib3.PoolManager()
+    headers = urllib3.HTTPHeaderDict()
+    headers.add('Content-Type', 'application/json')
+    headers.add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36 Edge/18.18363')
+    resp =  http.request(method="POST", url=discordHook, body=bytes(json.dumps(data), 'UTF-8'), headers=headers)
+    if resp.status >= 400:
+        LOGGER.warning(f"Server response: {resp.data()}")
+
 def main():
     """
     main application loop
@@ -150,6 +179,7 @@ def main():
         config = yaml.safe_load(fp)
     protected_vms = config.get('protected_vms', 'HostedEngine')
     monitor_frequency = config.get('monitor_frequency', 60)
+    discord_webhook = config.get('discord_webhook', None)
     ups = config['ups']
     LOGGER.info('Started')
     try:
@@ -161,9 +191,16 @@ def main():
                 on_mains = _is_ups_on_mains(appliance)
                 if not on_mains:
                     count += 1
-                    LOGGER.info(f"{appliance} is on battery!")
+                    msg = f"{appliance} is on battery!"
+                    LOGGER.info(msg)
+                    if discord_webhook:
+                        _post_msg_discord(msg, discord_webhook)
                     monitor_frequency=10
             if count == len(ups):
+                msg = "All UPS are on battery. Begging shutdown!"
+                LOGGER.info(msg)
+                if discord_webhook:
+                    _post_msg_discord(msg, discord_webhook)
                 break
             count = 0
             time.sleep(monitor_frequency)
