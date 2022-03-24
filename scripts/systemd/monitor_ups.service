@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 Restart=always
-ExecStart=/usr/local/bin/monitor_ups.sh
+ExecStart=/bin/bash /usr/local/bin/monitor_ups.sh
 
 [Install]
 WantedBy=multi-user.target
