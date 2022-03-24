@@ -65,11 +65,14 @@ def power_off_rhvm():
         '--vm-shutdown'
     ])
 
-def power_off_vms(connection, protected_vms):
+def power_off_vms(connection, protected_vms, ups):
     """
     power off VMs using oVirt SDK for connection
     :param object connection: oVirt connection object
+    :param list protected_vms: A list of VMs that we shouldn't shutdown if required
+    :param list ups: A list of UPS that we want to poll while shutting the VMs down
     """
+
     LOGGER.debug('Retrieving VM details')
     LOGGER.info(f"Excluding the following VMs: {protected_vms}")
     system_service = connection.system_service()
@@ -84,6 +87,14 @@ def power_off_vms(connection, protected_vms):
                 try:
                     LOGGER.debug(f"{vm.name}: {vm.status}")
                     vm_service = vms_service.vm_service(vm.id)
+                    if vm.status == sdk.types.VmStatus.SHUTTING_DOWN:
+                        low_battery_count = 0
+                        for appliance in ups:
+                            ups_battery_level = _ups_battery_time_remaining(appliance)
+                            if ups_battery_level < 240:
+                                low_battery_count += 1
+                        if low_battery_count == len(ups):
+                            vm_service.stop()
                     if vm.status == sdk.types.VmStatus.DOWN:
                         stopped_vms.add(vm.name)
                     if vm.status == sdk.types.VmStatus.UP:
@@ -147,6 +158,32 @@ def _is_ups_on_mains(ups_ip_addr):
             return True
         if result == 1:
             return False
+
+def _ups_battery_time_remaining(ups_ip_addr):
+    """
+    amount of time remaining on battery
+    :param string ups_ip_addr: IP address of the IPS to check
+    """
+    iterator = getCmd(SnmpEngine(),
+                  UsmUserData('readuser'),
+                  UdpTransportTarget((ups_ip_addr, 161)),
+                  ContextData(),
+                  ObjectType(ObjectIdentity('1.3.6.1.4.1.705.1.5.1.0')),
+                  lookupMib=False)
+
+    errorIndication, errorStatus, errorIndex, varBinds = next(iterator)
+
+    if errorIndication:  # SNMP engine errors
+        LOGGER.critical(errorIndication)
+        sys.exit(1)
+
+    if errorStatus:  # SNMP agent errors
+        LOGGER.critical('%s at %s' % (errorStatus.prettyPrint(), varBinds[int(errorIndex)-1] if errorIndex else '?'))
+        sys.exit(1)
+
+    for varBind in varBinds: # Have to iterate, even though we are looking at a single instance
+        result = varBind[1]
+    return result
 
 def _post_msg_discord(msg, discordHook, colour='16711680'):
     """
@@ -216,7 +253,7 @@ def main():
         ca_file = 'ca-bundle.pem'
     )
     set_maintenance_mode()
-    power_off_vms(connection, protected_vms)
+    power_off_vms(connection, protected_vms, ups)
     power_off_rhvm()
     if ARGS.ceph:
         LOGGER.debug('Setting ceph flags')
