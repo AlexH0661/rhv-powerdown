@@ -155,7 +155,7 @@ def main():
     try:
         count = 0
         LOGGER.info('Monitoring')
-        while count < 2:
+        while count < len(ups):
             monitor_frequency = config.get('monitor_frequency', 60)
             for appliance in ups:
                 on_mains = _is_ups_on_mains(appliance)
@@ -163,7 +163,7 @@ def main():
                     count += 1
                     LOGGER.info(f"{appliance} is on battery!")
                     monitor_frequency=10
-            if count == 2:
+            if count == len(ups):
                 break
             count = 0
             time.sleep(monitor_frequency)
