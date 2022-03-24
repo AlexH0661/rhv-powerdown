@@ -2,16 +2,18 @@
 
 """ Gracefully shutdown all services on a Red Hat Virtualization Host """
 import argparse
+from cgitb import lookup
 import os
 import subprocess
 import sys
 import time
 
 import msgpack
+from pysnmp.hlapi import *
 import ovirtsdk4 as sdk
-from ovirtsdk4 import types
 import yaml
 
+MONITOR_FREQUENCY = 60
 PARSER = argparse.ArgumentParser()
 PARSER.add_argument('--ceph', action='store_true', help='This node hosts RHCS')
 ARGS = PARSER.parse_args()
@@ -61,9 +63,9 @@ def power_off_vms(connection, protected_vms):
                 try:
                     print(f"{vm.name}: {vm.status}")
                     vm_service = vms_service.vm_service(vm.id)
-                    if vm.status == types.VmStatus.DOWN:
+                    if vm.status == sdk.types.VmStatus.DOWN:
                         stopped_vms.add(vm.name)
-                    if vm.status == types.VmStatus.UP:
+                    if vm.status == sdk.types.VmStatus.UP:
                         vm_service.shutdown()
                     continue
                 except BaseException as base_err:
@@ -96,13 +98,61 @@ def set_ceph_flags():
             flag
         ])
 
+def _is_ups_on_mains(ups_ip_addr):
+    """
+    checks if an Eaton UPS is on battery
+    :param string ups_ip_addr: IP address of the UPS to check
+    """
+    iterator = getCmd(SnmpEngine(),
+                  UsmUserData('readuser'),
+                  UdpTransportTarget((ups_ip_addr, 161)),
+                  ContextData(),
+                  ObjectType(ObjectIdentity('1.3.6.1.4.1.705.1.7.3.0')),
+                  lookupMib=False)
+
+    errorIndication, errorStatus, errorIndex, varBinds = next(iterator)
+
+    if errorIndication:  # SNMP engine errors
+        print(errorIndication)
+    else:
+        if errorStatus:  # SNMP agent errors
+            print('%s at %s' % (errorStatus.prettyPrint(), varBinds[int(errorIndex)-1] if errorIndex else '?'))
+        else:
+            for varBind in varBinds:
+                result = varBind.split('=').trim()[2]
+                print(result)
+    if result == 2:
+        return True
+    if result == 1:
+        return False
+
 def main():
     """
     main application loop
     """
+    global MONITOR_FREQUENCY
+
     with open('config.yml', 'r') as fp:
         config = yaml.safe_load(fp)
     protected_vms = config.get('protected_vms', 'HostedEngine')
+    ups = config['ups']
+    try:
+        count = 0
+        while count < 2:
+            for appliance in ups:
+                on_mains = _is_ups_on_mains(appliance)
+                if not on_mains:
+                    count += 1
+                    print(f"{appliance} is on battery!")
+                    MONITOR_FREQUENCY=10
+            if count == 2:
+                break
+            count = 0
+            time.sleep(MONITOR_FREQUENCY)
+    except KeyboardInterrupt as key_int_err:
+        print('Caught CTRL+C - Exiting')
+        sys.exit(1)
+    print('Starting graceful shutdown procedure')
     print('Connecting to RHVM')
     connection = sdk.Connection(
         url = config['rhvm_url'],
@@ -119,5 +169,5 @@ def main():
     power_off_host()
 
 if __name__ == '__main__':
-    print('Starting graceful shutdown procedure')
+    print('Monitoring UPS')
     main()

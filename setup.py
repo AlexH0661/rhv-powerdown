@@ -9,11 +9,12 @@ setup(
     install_requires=[
         'msgpack',
         'pylint',
+        'pysnmp',
         'pyyaml'
     ],
     entry_points = {
         'console_scripts': [
-            'emergencypoweroff = rhv_power.__main__:main'
+            'monitorups = rhv_power.__main__:main'
         ],
     }
 )
