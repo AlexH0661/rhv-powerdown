@@ -1,0 +1,12 @@
+[Unit]
+Description=Monitor UPS and gracefully shutdown if required
+After=multi-user.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=always
+ExecStart=/usr/local/bin/monitor_ups.sh
+
+[Install]
+WantedBy=multi-user.target

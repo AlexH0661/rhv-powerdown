@@ -13,9 +13,9 @@ from pysnmp.hlapi import *
 import ovirtsdk4 as sdk
 import yaml
 
-MONITOR_FREQUENCY = 60
 PARSER = argparse.ArgumentParser()
 PARSER.add_argument('--ceph', action='store_true', help='This node hosts RHCS')
+PARSER.add_argument('--config', help='Path to configuration file', default='/opt/rhv_scripts/config.yml')
 ARGS = PARSER.parse_args()
 
 FLAGS = [
@@ -114,41 +114,41 @@ def _is_ups_on_mains(ups_ip_addr):
 
     if errorIndication:  # SNMP engine errors
         print(errorIndication)
-    else:
-        if errorStatus:  # SNMP agent errors
-            print('%s at %s' % (errorStatus.prettyPrint(), varBinds[int(errorIndex)-1] if errorIndex else '?'))
-        else:
-            for varBind in varBinds:
-                result = varBind.split('=').trim()[2]
-                print(result)
-    if result == 2:
-        return True
-    if result == 1:
-        return False
+
+    if errorStatus:  # SNMP agent errors
+        print('%s at %s' % (errorStatus.prettyPrint(), varBinds[int(errorIndex)-1] if errorIndex else '?'))
+
+    for varBind in varBinds: # Have to iterate, even though we are looking at a single instance
+        result = varBind[1]
+        if result == 2:
+            return True
+        if result == 1:
+            return False
 
 def main():
     """
     main application loop
     """
-    global MONITOR_FREQUENCY
 
-    with open('config.yml', 'r') as fp:
+    with open(ARGS.config, 'r') as fp:
         config = yaml.safe_load(fp)
     protected_vms = config.get('protected_vms', 'HostedEngine')
+    monitor_frequency = config.get('monitor_frequency', 60)
     ups = config['ups']
     try:
         count = 0
         while count < 2:
+            monitor_frequency = config.get('monitor_frequency', 60)
             for appliance in ups:
                 on_mains = _is_ups_on_mains(appliance)
                 if not on_mains:
                     count += 1
                     print(f"{appliance} is on battery!")
-                    MONITOR_FREQUENCY=10
+                    monitor_frequency=10
             if count == 2:
                 break
             count = 0
-            time.sleep(MONITOR_FREQUENCY)
+            time.sleep(monitor_frequency)
     except KeyboardInterrupt as key_int_err:
         print('Caught CTRL+C - Exiting')
         sys.exit(1)

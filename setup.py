@@ -16,5 +16,9 @@ setup(
         'console_scripts': [
             'monitorups = rhv_power.__main__:main'
         ],
-    }
+    },
+    data_files=[
+        ('/etc/systemd/system/', ['scripts/systemd/monitor_ups.service']),
+        ('/usr/local/bin/', ['scripts/bin/monitor_ups.sh'])
+    ]
 )
