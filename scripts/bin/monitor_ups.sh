@@ -5,7 +5,7 @@ if [[ ! -d /opt/rhv_scripts ]]; then
 fi
 
 if [[ ! -d /opt/rhv_scripts/venv ]]; then
-  python3 -m venv /opt/rhv_scripts/venv
+  python3 -m venv --system-site-packages /opt/rhv_scripts/venv
 fi
 
 source /opt/rhv_scripts/venv/bin/activate

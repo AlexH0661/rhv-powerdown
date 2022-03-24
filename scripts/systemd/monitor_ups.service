@@ -1,5 +1,5 @@
 [Unit]
-Description=Monitor UPS and gracefully shutdown if required
+Description=Monitor UPS
 After=multi-user.target network-online.target
 Wants=network-online.target
 
