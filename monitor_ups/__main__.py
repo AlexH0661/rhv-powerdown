@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-""" Gracefully shutdown all services on a Red Hat Virtualization Host """
+""" Gracefully shutdown all services on a Red Hat Virtualization Host when all UPS are on battery """
 import argparse
 import logging
 import json
@@ -85,12 +85,12 @@ def power_off_vms(connection, protected_vms, ups):
         for vm in vms:
             if vm.name not in protected_vms:
                 try:
-                    LOGGER.debug(f"{vm.name}: {vm.status}")
+                    LOGGER.info(f"{vm.name}: {vm.status}")
                     vm_service = vms_service.vm_service(vm.id)
                     if vm.status == sdk.types.VmStatus.SHUTTING_DOWN:
                         low_battery_count = 0
                         for appliance in ups:
-                            ups_battery_level = _ups_battery_time_remaining(appliance)
+                            ups_battery_level = ups_battery_time_remaining(appliance)
                             if ups_battery_level < 240:
                                 low_battery_count += 1
                         if low_battery_count == len(ups):
@@ -130,16 +130,19 @@ def set_ceph_flags():
             flag
         ])
 
-def _is_ups_on_mains(ups_ip_addr):
+def _get_oid_value(ups_ip_addr, oid):
     """
-    checks if an Eaton UPS is on battery
-    :param string ups_ip_addr: IP address of the UPS to check
+    Using SNMPv3 get the value for a specific OID
+
+    :param string ups_ip_addr: IP address of the UPS to poll
+    :param string oid: OID to get the value of
+    :returns: SNMP result (pysnmp generator)
     """
     iterator = getCmd(SnmpEngine(),
                   UsmUserData('readuser'),
                   UdpTransportTarget((ups_ip_addr, 161)),
                   ContextData(),
-                  ObjectType(ObjectIdentity('1.3.6.1.4.1.705.1.7.3.0')),
+                  ObjectType(ObjectIdentity(oid)),
                   lookupMib=False)
 
     errorIndication, errorStatus, errorIndex, varBinds = next(iterator)
@@ -152,36 +155,31 @@ def _is_ups_on_mains(ups_ip_addr):
         LOGGER.critical('%s at %s' % (errorStatus.prettyPrint(), varBinds[int(errorIndex)-1] if errorIndex else '?'))
         sys.exit(1)
 
-    for varBind in varBinds: # Have to iterate, even though we are looking at a single instance
+    return varBinds
+
+def is_ups_on_mains(ups_ip_addr):
+    """
+    checks if an Eaton UPS is on battery
+    :param string ups_ip_addr: IP address of the UPS to check
+    """
+    # varBinds is a generator created by pysnmp which contains the SNMP Get results
+    varBinds = _get_oid_value(ups_ip_addr, '1.3.6.1.4.1.705.1.7.3.0')
+    for varBind in varBinds:
         result = varBind[1]
         if result == 2:
             return True
         if result == 1:
             return False
 
-def _ups_battery_time_remaining(ups_ip_addr):
+def ups_battery_time_remaining(ups_ip_addr):
     """
     amount of time remaining on battery
     :param string ups_ip_addr: IP address of the IPS to check
     """
-    iterator = getCmd(SnmpEngine(),
-                  UsmUserData('readuser'),
-                  UdpTransportTarget((ups_ip_addr, 161)),
-                  ContextData(),
-                  ObjectType(ObjectIdentity('1.3.6.1.4.1.705.1.5.1.0')),
-                  lookupMib=False)
-
-    errorIndication, errorStatus, errorIndex, varBinds = next(iterator)
-
-    if errorIndication:  # SNMP engine errors
-        LOGGER.critical(errorIndication)
-        sys.exit(1)
-
-    if errorStatus:  # SNMP agent errors
-        LOGGER.critical('%s at %s' % (errorStatus.prettyPrint(), varBinds[int(errorIndex)-1] if errorIndex else '?'))
-        sys.exit(1)
-
-    for varBind in varBinds: # Have to iterate, even though we are looking at a single instance
+    # varBinds is a generator created by pysnmp which contains the SNMP Get results
+    varBinds = _get_oid_value(ups_ip_addr, '1.3.6.1.4.1.705.1.5.1.0')
+    for varBind in varBinds:
+        print(varBind)
         result = varBind[1]
     return result
 
@@ -225,7 +223,7 @@ def main():
         while count < len(ups):
             monitor_frequency = config.get('monitor_frequency', 60)
             for appliance in ups:
-                on_mains = _is_ups_on_mains(appliance)
+                on_mains = is_ups_on_mains(appliance)
                 if not on_mains:
                     count += 1
                     msg = f"{appliance} is on battery!"
@@ -256,7 +254,7 @@ def main():
     power_off_vms(connection, protected_vms, ups)
     power_off_rhvm()
     if ARGS.ceph:
-        LOGGER.debug('Setting ceph flags')
+        LOGGER.info('Setting ceph flags')
         set_ceph_flags()
     LOGGER.info('Completed')
     power_off_host()
