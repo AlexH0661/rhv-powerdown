@@ -64,6 +64,22 @@ def power_off_rhvm():
         'hosted-engine',
         '--vm-shutdown'
     ])
+    shutdown = False
+    while not shutdown:
+        result = subprocess.run([
+            'hosted-engine',
+            '--vm-status ',
+            '--json'
+        ], capture_output=True)
+        json_result = json.loads(result)
+
+        hosted_engine_down = 0
+        for i in json_result.keys():
+            if json_result[i]["engine-status"]["vm"] == "down":
+                hosted_engine_down += 1
+        if hosted_engine_down == len(json_result) - 1:
+            shutdown = True
+            break
 
 def power_off_vms(connection, protected_vms, ups):
     """
