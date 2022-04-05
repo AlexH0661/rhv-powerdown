@@ -198,12 +198,13 @@ def _post_msg_discord(msg, discordHook, colour='16711680'):
     embed["description"] = msg
     data["embeds"].append(embed)
     http = urllib3.PoolManager()
-    headers = urllib3.HTTPHeaderDict()
-    headers.add('Content-Type', 'application/json')
-    headers.add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36 Edge/18.18363')
+    headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36 Edge/18.18363"
+            }
     resp =  http.request(method="POST", url=discordHook, body=bytes(json.dumps(data), 'UTF-8'), headers=headers)
     if resp.status >= 400:
-        LOGGER.warning(f"Server response: {resp.data()}")
+        LOGGER.warning(f"Server response: {resp.data.decode('UTF-8')}")
 
 def main():
     """
@@ -232,7 +233,7 @@ def main():
                         _post_msg_discord(msg, discord_webhook)
                     monitor_frequency=10
             if count == len(ups):
-                msg = "All UPS are on battery. Begging shutdown!"
+                msg = "All UPS are on battery. Begining shutdown!"
                 LOGGER.info(msg)
                 if discord_webhook:
                     _post_msg_discord(msg, discord_webhook)
