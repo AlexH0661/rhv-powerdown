@@ -249,7 +249,7 @@ def main():
                         _post_msg_discord(msg, discord_webhook)
                     monitor_frequency=10
             if count == len(ups):
-                msg = "All UPS are on battery. Begining shutdown!"
+                msg = "All UPS are on battery. Beginning shutdown!"
                 LOGGER.info(msg)
                 if discord_webhook:
                     _post_msg_discord(msg, discord_webhook)
@@ -273,7 +273,7 @@ def main():
     if ARGS.ceph:
         LOGGER.info('Setting ceph flags')
         set_ceph_flags()
-    LOGGER.info('Completed')
+    LOGGER.info('Completed. Shutting down host.')
     power_off_host()
 
 if __name__ == '__main__':
