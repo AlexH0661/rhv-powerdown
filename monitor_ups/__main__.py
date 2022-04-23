@@ -265,7 +265,7 @@ def main():
         url = config['rhvm_url'],
         username = config['rhvm_username'],
         password = config['rhvm_password'],
-        ca_file = 'ca-bundle.pem'
+        ca_file = '/opt/rhv_scripts/ca-bundle.pem'
     )
     set_maintenance_mode()
     power_off_vms(connection, protected_vms, ups)
