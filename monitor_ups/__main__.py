@@ -2,6 +2,7 @@
 
 """ Gracefully shutdown all services on a Red Hat Virtualization Host when all UPS are on battery """
 import argparse
+from lib2to3.pytree import Base
 import logging
 import json
 import socket
@@ -103,7 +104,7 @@ def power_off_vms(connection, protected_vms, ups):
                 try:
                     LOGGER.info(f"{vm.name}: {vm.status}")
                     vm_service = vms_service.vm_service(vm.id)
-                    if vm.status == sdk.types.VmStatus.SHUTTING_DOWN:
+                    if vm.status == sdk.types.VmStatus.POWERING_DOWN:
                         low_battery_count = 0
                         for appliance in ups:
                             ups_battery_level = ups_battery_time_remaining(appliance)
@@ -260,15 +261,19 @@ def main():
         LOGGER.critical('Caught CTRL+C - Exiting')
         sys.exit(1)
     LOGGER.info('Starting graceful shutdown procedure')
-    LOGGER.debug('Connecting to RHVM')
-    connection = sdk.Connection(
-        url = config['rhvm_url'],
-        username = config['rhvm_username'],
-        password = config['rhvm_password'],
-        ca_file = '/opt/rhv_scripts/ca-bundle.pem'
-    )
     set_maintenance_mode()
-    power_off_vms(connection, protected_vms, ups)
+    try:
+        LOGGER.debug('Connecting to RHVM')
+        connection = sdk.Connection(
+            url = config['rhvm_url'],
+            username = config['rhvm_username'],
+            password = config['rhvm_password'],
+            ca_file = '/opt/rhv_scripts/ca-bundle.pem'
+        )
+        power_off_vms(connection, protected_vms, ups)
+    except sdk.ConnectionError as ovirt_conn_err:
+        LOGGER.critical(ovirt_conn_err)
+        pass
     power_off_rhvm()
     if ARGS.ceph:
         LOGGER.info('Setting ceph flags')
