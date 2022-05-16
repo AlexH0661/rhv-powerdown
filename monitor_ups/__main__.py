@@ -219,9 +219,12 @@ def _post_msg_discord(msg, discordHook, colour='16711680'):
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36 Edge/18.18363"
             }
-    resp =  http.request(method="POST", url=discordHook, body=bytes(json.dumps(data), 'UTF-8'), headers=headers)
-    if resp.status >= 400:
-        LOGGER.warning(f"Server response: {resp.data.decode('UTF-8')}")
+    try:
+        resp =  http.request(method="POST", url=discordHook, body=bytes(json.dumps(data), 'UTF-8'), headers=headers)
+        if resp.status >= 400:
+            LOGGER.warning(f"Server response: {resp.data.decode('UTF-8')}")
+    except BaseException as base_err:
+        LOGGER.warning(base_err)
 
 def main():
     """
