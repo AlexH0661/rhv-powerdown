@@ -4,6 +4,7 @@
 import argparse
 from lib2to3.pytree import Base
 import logging
+import logging.handlers
 import json
 import socket
 import subprocess
@@ -17,61 +18,55 @@ import ovirtsdk4 as sdk
 import yaml
 
 PARSER = argparse.ArgumentParser()
-PARSER.add_argument('--ceph', action='store_true', help='This node hosts RHCS')
-PARSER.add_argument('--config', help='Path to configuration file', default='/opt/rhv_scripts/config.yml')
+PARSER.add_argument("--ceph", action="store_true", help="This node hosts RHCS")
 PARSER.add_argument(
-    '--verbose', help='Increase application verbosity', action='store_true'
+    "--config", help="Path to configuration file", default="/opt/rhv_scripts/config.yml"
+)
+PARSER.add_argument(
+    "--verbose", help="Increase application verbosity", action="store_true"
 )
 ARGS = PARSER.parse_args()
 
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 s.connect(("8.8.8.8", 80))
 HOST_IP = s.getsockname()[0]
-HOSTNAME = socket.gethostname() 
+HOSTNAME = socket.gethostname()
 
 LOG_LEVEL = logging.INFO
 if ARGS.verbose:
     LOG_LEVEL = logging.DEBUG
 
-LOGGER = logging.getLogger('monitorups')
+LOGGER = logging.getLogger("monitorups")
 logging.basicConfig(
     level=LOG_LEVEL,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+SYSLOG_HANDLER = logging.handlers.SysLogHandler("/dev/log")
+SYSLOG_HANDLER.setLevel(LOG_LEVEL)
+LOGGER.addHandler(SYSLOG_HANDLER)
 
-FLAGS = [
-    'noout',
-    'norecover',
-    'norebalance',
-    'nobackfill',
-    'nodown',
-    'pause'
-    ]
+
+FLAGS = ["noout", "norecover", "norebalance", "nobackfill", "nodown", "pause"]
+
 
 def power_off_host():
     """
     powers off Red Hat Virtualization Host
     """
-    subprocess.run([
-        'poweroff'
-    ])
+    subprocess.run(["poweroff"])
+
 
 def power_off_rhvm():
     """
     power off Red Hat Virtualization Manager
     """
-    subprocess.run([
-        'hosted-engine',
-        '--vm-shutdown'
-    ])
+    subprocess.run(["hosted-engine", "--vm-shutdown"])
     shutdown = False
     while not shutdown:
-        result = subprocess.run([
-            'hosted-engine',
-            '--vm-status ',
-            '--json'
-        ], capture_output=True)
+        result = subprocess.run(
+            ["hosted-engine", "--vm-status ", "--json"], capture_output=True
+        )
         json_result = json.loads(result)
 
         hosted_engine_down = 0
@@ -82,6 +77,7 @@ def power_off_rhvm():
             shutdown = True
             break
 
+
 def power_off_vms(connection, protected_vms, ups):
     """
     power off VMs using oVirt SDK for connection
@@ -90,14 +86,14 @@ def power_off_vms(connection, protected_vms, ups):
     :param list ups: A list of UPS that we want to poll while shutting the VMs down
     """
 
-    LOGGER.debug('Retrieving VM details')
+    LOGGER.debug("Retrieving VM details")
     LOGGER.info(f"Excluding the following VMs: {protected_vms}")
     system_service = connection.system_service()
     vms_service = system_service.vms_service()
     loop_count = 0
     stopped_vms = set()
     vms = vms_service.list()
-    while len(stopped_vms) < (len(vms)-len(protected_vms)):
+    while len(stopped_vms) < (len(vms) - len(protected_vms)):
         loop_count += 1
         for vm in vms:
             if vm.name not in protected_vms:
@@ -125,27 +121,21 @@ def power_off_vms(connection, protected_vms, ups):
         time.sleep(1)
         vms = vms_service.list()
 
+
 def set_maintenance_mode():
     """
     put Red Hat Virtualization cluster in maintenance mode
     """
-    subprocess.run([
-        'hosted-engine',
-        '--set-maintenance',
-        '--mode=global'
-    ])
+    subprocess.run(["hosted-engine", "--set-maintenance", "--mode=global"])
+
 
 def set_ceph_flags():
     """
     set ceph flags required for graceful shutdown
     """
     for flag in FLAGS:
-        subprocess.run([
-            'ceph',
-            'osd',
-            'set',
-            flag
-        ])
+        subprocess.run(["ceph", "osd", "set", flag])
+
 
 def _get_oid_value(ups_ip_addr, oid):
     """
@@ -155,12 +145,14 @@ def _get_oid_value(ups_ip_addr, oid):
     :param string oid: OID to get the value of
     :returns: SNMP result (pysnmp generator)
     """
-    iterator = getCmd(SnmpEngine(),
-                  UsmUserData('readuser'),
-                  UdpTransportTarget((ups_ip_addr, 161)),
-                  ContextData(),
-                  ObjectType(ObjectIdentity(oid)),
-                  lookupMib=False)
+    iterator = getCmd(
+        SnmpEngine(),
+        UsmUserData("readuser"),
+        UdpTransportTarget((ups_ip_addr, 161)),
+        ContextData(),
+        ObjectType(ObjectIdentity(oid)),
+        lookupMib=False,
+    )
 
     errorIndication, errorStatus, errorIndex, varBinds = next(iterator)
 
@@ -169,10 +161,17 @@ def _get_oid_value(ups_ip_addr, oid):
         sys.exit(1)
 
     if errorStatus:  # SNMP agent errors
-        LOGGER.critical('%s at %s' % (errorStatus.prettyPrint(), varBinds[int(errorIndex)-1] if errorIndex else '?'))
+        LOGGER.critical(
+            "%s at %s"
+            % (
+                errorStatus.prettyPrint(),
+                varBinds[int(errorIndex) - 1] if errorIndex else "?",
+            )
+        )
         sys.exit(1)
 
     return varBinds
+
 
 def is_ups_on_mains(ups_ip_addr):
     """
@@ -180,7 +179,7 @@ def is_ups_on_mains(ups_ip_addr):
     :param string ups_ip_addr: IP address of the UPS to check
     """
     # varBinds is a generator created by pysnmp which contains the SNMP Get results
-    varBinds = _get_oid_value(ups_ip_addr, '1.3.6.1.4.1.705.1.7.3.0')
+    varBinds = _get_oid_value(ups_ip_addr, "1.3.6.1.4.1.705.1.7.3.0")
     for varBind in varBinds:
         result = varBind[1]
         if result == 2:
@@ -188,26 +187,30 @@ def is_ups_on_mains(ups_ip_addr):
         if result == 1:
             return False
 
+
 def ups_battery_time_remaining(ups_ip_addr):
     """
     amount of time remaining on battery
     :param string ups_ip_addr: IP address of the IPS to check
     """
     # varBinds is a generator created by pysnmp which contains the SNMP Get results
-    varBinds = _get_oid_value(ups_ip_addr, '1.3.6.1.4.1.705.1.5.1.0')
+    varBinds = _get_oid_value(ups_ip_addr, "1.3.6.1.4.1.705.1.5.1.0")
     for varBind in varBinds:
         print(varBind)
         result = varBind[1]
     return result
 
-def _post_msg_discord(msg, discordHook, colour='16711680'):
+
+def _post_msg_discord(msg, discordHook, colour="16711680"):
     """
     post a message to discord
     """
     data = {}
     data["tts"] = "true"
     data["username"] = HOSTNAME
-    data["avatar_url"] = "https://cdn3.vectorstock.com/i/1000x1000/78/02/cartoon-turtle-vector-4367802.jpg"
+    data[
+        "avatar_url"
+    ] = "https://cdn3.vectorstock.com/i/1000x1000/78/02/cartoon-turtle-vector-4367802.jpg"
     data["embeds"] = []
     embed = {}
     embed["color"] = colour
@@ -216,33 +219,39 @@ def _post_msg_discord(msg, discordHook, colour='16711680'):
     data["embeds"].append(embed)
     http = urllib3.PoolManager()
     headers = {
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36 Edge/18.18363"
-            }
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36 Edge/18.18363",
+    }
     try:
-        resp =  http.request(method="POST", url=discordHook, body=bytes(json.dumps(data), 'UTF-8'), headers=headers)
+        resp = http.request(
+            method="POST",
+            url=discordHook,
+            body=bytes(json.dumps(data), "UTF-8"),
+            headers=headers,
+        )
         if resp.status >= 400:
             LOGGER.warning(f"Server response: {resp.data.decode('UTF-8')}")
     except BaseException as base_err:
         LOGGER.warning(base_err)
 
+
 def main():
     """
     main application loop
     """
-    LOGGER.info('Starting')
-    with open(ARGS.config, 'r') as fp:
+    LOGGER.info("Starting")
+    with open(ARGS.config, "r") as fp:
         config = yaml.safe_load(fp)
-    protected_vms = config.get('protected_vms', 'HostedEngine')
-    monitor_frequency = config.get('monitor_frequency', 60)
-    discord_webhook = config.get('discord_webhook', None)
-    ups = config['ups']
-    LOGGER.info('Started')
+    protected_vms = config.get("protected_vms", "HostedEngine")
+    monitor_frequency = config.get("monitor_frequency", 60)
+    discord_webhook = config.get("discord_webhook", None)
+    ups = config["ups"]
+    LOGGER.info("Started")
     try:
         count = 0
-        LOGGER.info('Monitoring')
+        LOGGER.info("Monitoring")
         while count < len(ups):
-            monitor_frequency = config.get('monitor_frequency', 60)
+            monitor_frequency = config.get("monitor_frequency", 60)
             for appliance in ups:
                 on_mains = is_ups_on_mains(appliance)
                 if not on_mains:
@@ -251,7 +260,7 @@ def main():
                     LOGGER.info(msg)
                     if discord_webhook:
                         _post_msg_discord(msg, discord_webhook)
-                    monitor_frequency=10
+                    monitor_frequency = 10
             if count == len(ups):
                 msg = "All UPS are on battery. Beginning shutdown!"
                 LOGGER.info(msg)
@@ -261,17 +270,17 @@ def main():
             count = 0
             time.sleep(monitor_frequency)
     except KeyboardInterrupt as key_int_err:
-        LOGGER.critical('Caught CTRL+C - Exiting')
+        LOGGER.critical("Caught CTRL+C - Exiting")
         sys.exit(1)
-    LOGGER.info('Starting graceful shutdown procedure')
+    LOGGER.info("Starting graceful shutdown procedure")
     set_maintenance_mode()
     try:
-        LOGGER.debug('Connecting to RHVM')
+        LOGGER.debug("Connecting to RHVM")
         connection = sdk.Connection(
-            url = config['rhvm_url'],
-            username = config['rhvm_username'],
-            password = config['rhvm_password'],
-            ca_file = '/opt/rhv_scripts/ca-bundle.pem'
+            url=config["rhvm_url"],
+            username=config["rhvm_username"],
+            password=config["rhvm_password"],
+            ca_file="/opt/rhv_scripts/ca-bundle.pem",
         )
         power_off_vms(connection, protected_vms, ups)
     except sdk.ConnectionError as ovirt_conn_err:
@@ -279,11 +288,12 @@ def main():
         pass
     power_off_rhvm()
     if ARGS.ceph:
-        LOGGER.info('Setting ceph flags')
+        LOGGER.info("Setting ceph flags")
         set_ceph_flags()
-    LOGGER.info('Completed. Shutting down host.')
+    LOGGER.info("Completed. Shutting down host.")
     power_off_host()
 
-if __name__ == '__main__':
-    LOGGER.info('Monitoring UPS')
+
+if __name__ == "__main__":
+    LOGGER.info("Monitoring UPS")
     main()
